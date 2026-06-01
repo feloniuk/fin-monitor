@@ -11,6 +11,7 @@ class IncomeExpenseChart extends ChartWidget
 {
     protected static ?string $heading = 'Доходи / Витрати (6 місяців)';
     protected static ?int $sort = 2;
+    protected int|string|array $columnSpan = 'full';
 
     protected function getData(): array
     {

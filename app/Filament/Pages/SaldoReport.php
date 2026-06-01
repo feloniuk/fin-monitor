@@ -4,6 +4,7 @@ namespace App\Filament\Pages;
 
 use App\Helpers\CurrencyHelper;
 use App\Models\MonobankAccount;
+use App\Models\Transaction;
 use App\Services\Monobank\MonobankSyncService;
 use Carbon\Carbon;
 use Filament\Forms;
@@ -23,12 +24,12 @@ class SaldoReport extends Page implements HasForms
 
     protected static string $view = 'filament.pages.saldo-report';
 
-    public ?int $account_id = null;
+    public array $account_ids = [];
     public ?string $date_from = null;
     public ?string $date_to = null;
     public string $group_by = 'month';
-    public array $reportData = [];
-    public ?int $currencyCode = null;
+    public array $accountReports = [];
+    public bool $reportGenerated = false;
 
     public function mount(): void
     {
@@ -42,9 +43,10 @@ class SaldoReport extends Page implements HasForms
             ->schema([
                 Forms\Components\Grid::make(4)
                     ->schema([
-                        Forms\Components\Select::make('account_id')
-                            ->label('Рахунок')
+                        Forms\Components\Select::make('account_ids')
+                            ->label('Рахунки')
                             ->options(fn () => MonobankAccount::all()->pluck('display_name', 'id')->toArray())
+                            ->multiple()
                             ->required(),
                         Forms\Components\DatePicker::make('date_from')
                             ->label('Від')
@@ -67,25 +69,39 @@ class SaldoReport extends Page implements HasForms
     public function generateReport(): void
     {
         $this->validate([
-            'account_id' => 'required|exists:monobank_accounts,id',
+            'account_ids' => 'required|array|min:1',
+            'account_ids.*' => 'exists:monobank_accounts,id',
             'date_from' => 'required|date',
             'date_to' => 'required|date|after_or_equal:date_from',
         ]);
 
-        $account = MonobankAccount::findOrFail($this->account_id);
-        $this->currencyCode = $account->currency_code;
+        $this->reportGenerated = true;
+        $this->accountReports = [];
 
+        $from = Carbon::parse($this->date_from);
+        $to = Carbon::parse($this->date_to);
         $service = new MonobankSyncService();
-        $this->reportData = $service->getSaldoReport(
-            $account,
-            Carbon::parse($this->date_from),
-            Carbon::parse($this->date_to),
-            $this->group_by
-        );
+
+        foreach ($this->account_ids as $accountId) {
+            $account = MonobankAccount::findOrFail($accountId);
+
+            $transactionCount = Transaction::where('monobank_account_id', $account->id)
+                ->whereBetween('time', [$from, $to])
+                ->count();
+
+            $periods = $service->getSaldoReport($account, $from->copy(), $to->copy(), $this->group_by);
+
+            $this->accountReports[] = [
+                'account_name' => $account->display_name,
+                'currency_code' => $account->currency_code,
+                'transaction_count' => $transactionCount,
+                'periods' => $periods,
+            ];
+        }
     }
 
-    public function formatAmount(int $amount): string
+    public function formatAmount(int $amount, int $currencyCode): string
     {
-        return CurrencyHelper::format($amount, $this->currencyCode ?? 980);
+        return CurrencyHelper::format($amount, $currencyCode);
     }
 }

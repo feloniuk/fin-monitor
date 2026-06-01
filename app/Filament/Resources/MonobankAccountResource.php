@@ -34,11 +34,6 @@ class MonobankAccountResource extends Resource
                     ->label('Тип')
                     ->badge()
                     ->formatStateUsing(fn (?string $state) => strtoupper($state ?? '—')),
-                Tables\Columns\TextColumn::make('iban')
-                    ->label('IBAN')
-                    ->searchable()
-                    ->toggleable()
-                    ->copyable(),
                 Tables\Columns\TextColumn::make('masked_pan')
                     ->label('Картка')
                     ->formatStateUsing(fn ($state) => is_array($state) ? implode(', ', $state) : ($state ?? '—')),
@@ -49,12 +44,19 @@ class MonobankAccountResource extends Resource
                     ->label('Баланс')
                     ->formatStateUsing(fn ($state, MonobankAccount $record) => CurrencyHelper::format($state, $record->currency_code))
                     ->color(fn ($state) => $state >= 0 ? 'success' : 'danger'),
+                Tables\Columns\TextColumn::make('iban')
+                    ->label('IBAN')
+                    ->searchable()
+                    ->copyable()
+                    ->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('credit_limit')
                     ->label('Кредитний ліміт')
-                    ->formatStateUsing(fn ($state, MonobankAccount $record) => $state > 0 ? CurrencyHelper::format($state, $record->currency_code) : '—'),
+                    ->formatStateUsing(fn ($state, MonobankAccount $record) => $state > 0 ? CurrencyHelper::format($state, $record->currency_code) : '—')
+                    ->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\IconColumn::make('is_active')
                     ->label('Активний')
-                    ->boolean(),
+                    ->boolean()
+                    ->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('last_statement_sync_at')
                     ->label('Остання синхронізація')
                     ->dateTime('d.m.Y H:i')
@@ -82,17 +84,40 @@ class MonobankAccountResource extends Resource
                             $to = \Carbon\Carbon::parse($data['date_to']);
 
                             $days = $from->diffInDays($to);
-                            $chunks = (int) ceil($days / 31);
-                            $estimatedTime = $chunks > 1 ? " (≈" . ($chunks * 65) . " сек. через rate limit)" : '';
 
-                            $service->dispatchStatementSync($record, $from, $to);
+                            if ($days <= 31) {
+                                $wait = \App\Services\Monobank\MonobankClient::secondsUntilNextCall();
+                                if ($wait > 0) {
+                                    Notification::make()
+                                        ->title('Зачекайте')
+                                        ->body("До наступного запиту залишилось {$wait} сек. (ліміт Monobank: 1 запит / 60 сек.)")
+                                        ->warning()
+                                        ->duration(8000)
+                                        ->send();
+                                    return;
+                                }
 
-                            Notification::make()
-                                ->title('Синхронізацію заплановано')
-                                ->body("Запитів: {$chunks}{$estimatedTime}. Транзакції завантажуються у фоновому режимі.")
-                                ->success()
-                                ->duration(10000)
-                                ->send();
+                                $count = $service->syncStatements($record, $from->timestamp, $to->timestamp);
+
+                                Notification::make()
+                                    ->title('Синхронізацію завершено')
+                                    ->body("Завантажено транзакцій: {$count}. Зачекайте 60 сек. перед наступним запитом.")
+                                    ->success()
+                                    ->duration(8000)
+                                    ->send();
+                            } else {
+                                $chunks = (int) ceil($days / 31);
+                                $estimatedTime = " (≈" . ($chunks * 65) . " сек. через rate limit)";
+
+                                $service->dispatchStatementSync($record, $from, $to);
+
+                                Notification::make()
+                                    ->title('Синхронізацію заплановано')
+                                    ->body("Період > 31 день — розбито на {$chunks} запитів{$estimatedTime}. Потрібен queue worker (php artisan queue:work).")
+                                    ->success()
+                                    ->duration(10000)
+                                    ->send();
+                            }
                         } catch (\Throwable $e) {
                             Notification::make()
                                 ->title('Помилка')

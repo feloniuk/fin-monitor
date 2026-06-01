@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:api.monobank.ua)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:documenter.getpostman.com)",
+      "WebSearch",
+      "WebFetch(domain:gist.github.com)",
+      "Bash(php:*)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(curl:*)",
+      "Bash(tail:*)",
+      "Bash(cd D:/feloniuk/fin-monitor && rm -f database/database.sqlite && touch database/database.sqlite && php artisan migrate --force 2>&1)"
+    ]
+  }
+}

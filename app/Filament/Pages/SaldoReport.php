@@ -2,12 +2,15 @@
 
 namespace App\Filament\Pages;
 
+use App\Exports\SaldoReportExport;
 use App\Helpers\CurrencyHelper;
 use App\Models\MonobankAccount;
 use App\Models\Transaction;
 use App\Services\Monobank\MonobankSyncService;
 use Carbon\Carbon;
 use Filament\Forms;
+use Maatwebsite\Excel\Facades\Excel;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
 use Filament\Forms\Form;
@@ -29,6 +32,7 @@ class SaldoReport extends Page implements HasForms
     public ?string $date_to = null;
     public string $group_by = 'month';
     public array $accountReports = [];
+    public array $summaryReport = [];
     public bool $reportGenerated = false;
 
     public function mount(): void
@@ -77,6 +81,7 @@ class SaldoReport extends Page implements HasForms
 
         $this->reportGenerated = true;
         $this->accountReports = [];
+        $this->summaryReport = [];
 
         $from = Carbon::parse($this->date_from);
         $to = Carbon::parse($this->date_to);
@@ -94,10 +99,62 @@ class SaldoReport extends Page implements HasForms
             $this->accountReports[] = [
                 'account_name' => $account->display_name,
                 'currency_code' => $account->currency_code,
+                'current_balance' => $account->balance,
                 'transaction_count' => $transactionCount,
                 'periods' => $periods,
             ];
         }
+
+        $this->summaryReport = $this->buildSummary();
+    }
+
+    private function buildSummary(): array
+    {
+        $byCurrency = [];
+
+        foreach ($this->accountReports as $report) {
+            $cc = $report['currency_code'];
+
+            if (!isset($byCurrency[$cc])) {
+                $byCurrency[$cc] = [
+                    'currency_code' => $cc,
+                    'current_balance' => 0,
+                    'account_count' => 0,
+                    'periods' => [],
+                ];
+            }
+
+            $byCurrency[$cc]['current_balance'] += $report['current_balance'];
+            $byCurrency[$cc]['account_count']++;
+
+            foreach ($report['periods'] as $i => $period) {
+                if (!isset($byCurrency[$cc]['periods'][$i])) {
+                    $byCurrency[$cc]['periods'][$i] = [
+                        'period' => $period['period'],
+                        'opening_balance' => 0,
+                        'income' => 0,
+                        'expense' => 0,
+                        'closing_balance' => 0,
+                    ];
+                }
+                $byCurrency[$cc]['periods'][$i]['opening_balance'] += $period['opening_balance'];
+                $byCurrency[$cc]['periods'][$i]['income'] += $period['income'];
+                $byCurrency[$cc]['periods'][$i]['expense'] += $period['expense'];
+                $byCurrency[$cc]['periods'][$i]['closing_balance'] += $period['closing_balance'];
+            }
+        }
+
+        return array_values($byCurrency);
+    }
+
+    public function exportExcel(): BinaryFileResponse
+    {
+        $filename = 'saldo-report-' . $this->date_from . '-' . $this->date_to . '.xlsx';
+
+        return Excel::download(
+            new SaldoReportExport($this->accountReports, $this->summaryReport, $this->date_from, $this->date_to),
+            $filename
+        );
     }
 
     public function formatAmount(int $amount, int $currencyCode): string

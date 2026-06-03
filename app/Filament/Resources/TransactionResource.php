@@ -9,6 +9,7 @@ use App\Models\Transaction;
 use Filament\Forms;
 use Filament\Resources\Resource;
 use Filament\Tables;
+use Filament\Tables\Enums\FiltersLayout;
 use Filament\Tables\Table;
 use Filament\Tables\Filters;
 
@@ -84,14 +85,19 @@ class TransactionResource extends Resource
             ->filters([
                 Filters\SelectFilter::make('monobank_account_id')
                     ->label('Рахунок')
-                    ->options(fn () => MonobankAccount::all()->pluck('display_name', 'id')->toArray()),
+                    ->options(fn () => MonobankAccount::all()->pluck('display_name', 'id')->toArray())
+                    ->multiple()
+                    ->preload(),
                 Filters\Filter::make('date_range')
                     ->form([
                         Forms\Components\DatePicker::make('date_from')
-                            ->label('Від'),
+                            ->label('Від')
+                            ->native(false),
                         Forms\Components\DatePicker::make('date_to')
-                            ->label('До'),
+                            ->label('До')
+                            ->native(false),
                     ])
+                    ->columns(2)
                     ->query(function ($query, array $data) {
                         return $query
                             ->when($data['date_from'], fn ($q, $date) => $q->whereDate('time', '>=', $date))
@@ -112,7 +118,8 @@ class TransactionResource extends Resource
                         }
                         return $query;
                     }),
-            ])
+            ], layout: FiltersLayout::AboveContent)
+            ->filtersFormColumns(3)
             ->actions([
                 Tables\Actions\ViewAction::make()
                     ->label('Деталі')

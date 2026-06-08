@@ -68,7 +68,7 @@ class MonobankAccountResource extends Resource
                     ->icon('heroicon-o-arrow-path')
                     ->color('success')
                     ->modalHeading('Синхронізація транзакцій')
-                    ->modalDescription('Ліміт Monobank API: 1 запит на 60 сек., макс. період — 31 день на запит. Якщо обраний період більше 31 дня, він буде розбитий на частини з автоматичною затримкою 65 сек. між ними. Потрібен запущений queue worker (php artisan queue:work).')
+                    ->modalDescription('Ліміт Monobank API: 1 запит на 60 сек., макс. період — 31 день на запит. Якщо обраний період більше 31 дня, він буде розбитий на частини з автоматичною затримкою 65 сек. між ними.')
                     ->form([
                         \Filament\Forms\Components\DatePicker::make('date_from')
                             ->label('Дата від')
@@ -113,7 +113,7 @@ class MonobankAccountResource extends Resource
 
                                 Notification::make()
                                     ->title('Синхронізацію заплановано')
-                                    ->body("Період > 31 день — розбито на {$chunks} запитів{$estimatedTime}. Потрібен queue worker (php artisan queue:work).")
+                                    ->body("Період > 31 день — розбито на {$chunks} запитів{$estimatedTime}. Синхронізація виконується автоматично у фоні.")
                                     ->success()
                                     ->duration(10000)
                                     ->send();

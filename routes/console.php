@@ -9,3 +9,4 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 Schedule::command('monobank:sync')->hourly();
+Schedule::command('queue:work --stop-when-empty --tries=5 --timeout=120')->everyMinute()->withoutOverlapping();
